@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 interface Vehicle {
@@ -8,6 +8,13 @@ interface Vehicle {
   make: string;
   model: string;
   uploadedAt: string;
+}
+
+interface SearchHistory {
+  id: string;
+  query: string;
+  timestamp: string;
+  results: number;
 }
 
 interface InsuranceOffer {
@@ -33,6 +40,13 @@ export default function ClientHomepage() {
     make: "",
     model: ""
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
+  const [filteredInsurance, setFilteredInsurance] = useState<InsuranceOffer[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'search' | 'history'>('overview');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Mock insurance data
   const mockInsuranceOffers: InsuranceOffer[] = [
@@ -82,13 +96,84 @@ export default function ClientHomepage() {
       return;
     }
     setUser(JSON.parse(userData));
+    
+    // Load search history from localStorage
+    const savedHistory = localStorage.getItem("searchHistory");
+    if (savedHistory) {
+      setSearchHistory(JSON.parse(savedHistory));
+    }
   }, [router]);
+
+  // Click outside handler for search history
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
+        setShowSearchHistory(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setVehicleForm({
       ...vehicleForm,
       [e.target.name]: e.target.value
     });
+  };
+
+  const handleSearch = async (query: string) => {
+    if (!query.trim()) return;
+    
+    setIsSearching(true);
+    setSearchQuery(query);
+    
+    // Simulate search delay
+    setTimeout(() => {
+      // Filter insurance offers based on search query
+      const filtered = mockInsuranceOffers.filter(offer => 
+        offer.provider.toLowerCase().includes(query.toLowerCase()) ||
+        offer.type.toLowerCase().includes(query.toLowerCase()) ||
+        offer.coverage.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      setFilteredInsurance(filtered);
+      setShowOffers(true);
+      setIsSearching(false);
+      
+      // Add to search history
+      const newHistoryItem: SearchHistory = {
+        id: Date.now().toString(),
+        query: query,
+        timestamp: new Date().toISOString(),
+        results: filtered.length
+      };
+      
+      const updatedHistory = [newHistoryItem, ...searchHistory.slice(0, 9)];
+      setSearchHistory(updatedHistory);
+      localStorage.setItem("searchHistory", JSON.stringify(updatedHistory));
+      setShowSearchHistory(false);
+    }, 1500);
+  };
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    setShowSearchHistory(value.length > 0 && searchHistory.length > 0);
+  };
+
+  const selectHistoryItem = (historyItem: SearchHistory) => {
+    setSearchQuery(historyItem.query);
+    handleSearch(historyItem.query);
+  };
+
+  const clearSearchHistory = () => {
+    setSearchHistory([]);
+    localStorage.removeItem("searchHistory");
+    setShowSearchHistory(false);
   };
 
   const handleVehicleUpload = async (e: React.FormEvent) => {
@@ -107,8 +192,25 @@ export default function ClientHomepage() {
 
       setVehicles([...vehicles, newVehicle]);
       setInsuranceOffers(mockInsuranceOffers);
+      setFilteredInsurance(mockInsuranceOffers);
       setShowOffers(true);
       setIsUploading(false);
+      
+      // Auto-search for the vehicle model
+      const vehicleQuery = `${vehicleForm.year} ${vehicleForm.make} ${vehicleForm.model}`;
+      setSearchQuery(vehicleQuery);
+      
+      // Add vehicle search to history
+      const vehicleHistoryItem: SearchHistory = {
+        id: (Date.now() + 1).toString(),
+        query: vehicleQuery,
+        timestamp: new Date().toISOString(),
+        results: mockInsuranceOffers.length
+      };
+      
+      const updatedHistory = [vehicleHistoryItem, ...searchHistory.slice(0, 9)];
+      setSearchHistory(updatedHistory);
+      localStorage.setItem("searchHistory", JSON.stringify(updatedHistory));
       
       // Reset form
       setVehicleForm({
@@ -189,48 +291,246 @@ export default function ClientHomepage() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-gray-900 via-gray-800 to-black py-16">
-        <div className="absolute inset-0">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-[#D72323]/20 rounded-full blur-3xl -translate-x-48 -translate-y-48"></div>
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl translate-x-48 translate-y-48"></div>
-        </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-5xl md:text-6xl font-black mb-6 leading-tight">
-            <span className="bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent">
-              The Universal
-            </span>
-            <br />
-            <span className="bg-gradient-to-r from-[#D72323] to-red-500 bg-clip-text text-transparent text-4xl md:text-5xl">
-              Warranty Hub
-            </span>
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-4xl mx-auto leading-relaxed">
-            Transform your F&I operations with the industry's most comprehensive warranty management platform. 
-            <span className="text-white font-semibold"> Compare, sell, and manage warranties from 15+ providers</span> in one unified system.
-          </p>
-          <div className="flex flex-wrap justify-center gap-8 text-center">
-            <div className="flex flex-col items-center">
-              <div className="text-3xl font-bold text-white mb-1">15+</div>
-              <div className="text-gray-400 text-sm">Provider Partners</div>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-3xl font-bold text-white mb-1">500+</div>
-              <div className="text-gray-400 text-sm">Dealerships</div>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="text-3xl font-bold text-white mb-1">99.9%</div>
-              <div className="text-gray-400 text-sm">Uptime</div>
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {/* Navigation Tabs */}
+        <div className="mb-12">
+          <div className="flex justify-center">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/50 p-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 ${
+                    activeTab === 'overview'
+                      ? 'bg-gradient-to-r from-[#D72323] to-red-600 text-white shadow-lg shadow-[#D72323]/25'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v0M8 5a2 2 0 012-2h4a2 2 0 012 2v0" />
+                    </svg>
+                    Overview
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('search')}
+                  className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 ${
+                    activeTab === 'search'
+                      ? 'bg-gradient-to-r from-[#D72323] to-red-600 text-white shadow-lg shadow-[#D72323]/25'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Search Insurance
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className={`px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 transform hover:scale-105 ${
+                    activeTab === 'history'
+                      ? 'bg-gradient-to-r from-[#D72323] to-red-600 text-white shadow-lg shadow-[#D72323]/25'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="relative">
+                      History
+                      {searchHistory.length > 0 && (
+                        <span className="ml-3 inline-flex items-center justify-center px-2 py-1 text-xs font-black bg-white/20 text-white rounded-full min-w-[24px]">
+                          {searchHistory.length > 9 ? '9+' : searchHistory.length}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+        {/* Tab Content */}
+        {activeTab === 'overview' && (
+          <div className="space-y-12">
+            {/* Overview Content */}
+            <div className="relative overflow-hidden">
+              <div className="absolute inset-0">
+                <div className="absolute -top-24 -left-24 w-96 h-96 bg-[#D72323]/10 rounded-full blur-3xl"></div>
+                <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
+              </div>
+              <div className="relative">
+                <div className="text-center">
+                  <h1 className="text-6xl md:text-7xl font-black mb-6 leading-tight">
+                    <span className="text-gray-900">The Universal</span>
+                    <br />
+                    <span className="text-[#D72323]">Warranty Hub</span>
+                  </h1>
+                  <p className="text-xl md:text-2xl text-gray-700 mb-10 max-w-6xl mx-auto leading-relaxed font-medium">
+                    Transform your F&I operations with the industry's most comprehensive warranty management platform.
+                    <span className="text-[#D72323] font-bold"> Compare, sell, and manage warranties from 15+ providers</span> in one unified system.
+                  </p>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Vehicle Upload Section */}
-          <div className="lg:col-span-1">
+                  <div className="flex flex-wrap justify-center gap-3 mb-10">
+                    <div className="px-5 py-3 bg-white/80 border border-gray-200/60 rounded-2xl">
+                      <div className="text-2xl font-black text-[#D72323]">15+</div>
+                      <div className="text-sm font-semibold text-gray-700">Provider Partners</div>
+                    </div>
+                    <div className="px-5 py-3 bg-white/80 border border-gray-200/60 rounded-2xl">
+                      <div className="text-2xl font-black text-[#D72323]">500+</div>
+                      <div className="text-sm font-semibold text-gray-700">Dealerships</div>
+                    </div>
+                    <div className="px-5 py-3 bg-white/80 border border-gray-200/60 rounded-2xl">
+                      <div className="text-2xl font-black text-[#D72323]">99.9%</div>
+                      <div className="text-sm font-semibold text-gray-700">Uptime</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white/80 border border-gray-200/60 rounded-2xl p-6">
+                    <div className="w-12 h-12 bg-[#D72323]/10 rounded-xl flex items-center justify-center mb-4">
+                      <svg className="w-6 h-6 text-[#D72323]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </div>
+                    <div className="text-lg font-black text-gray-900 mb-1">Compare plans fast</div>
+                    <div className="text-gray-600">See offers side-by-side and pick the best coverage for your customer.</div>
+                  </div>
+                  <div className="bg-white/80 border border-gray-200/60 rounded-2xl p-6">
+                    <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center mb-4">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="text-lg font-black text-gray-900 mb-1">Accurate pricing</div>
+                    <div className="text-gray-600">Clear prices, durations, and features—easy to explain and sell.</div>
+                  </div>
+                  <div className="bg-white/80 border border-gray-200/60 rounded-2xl p-6">
+                    <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center mb-4">
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div className="text-lg font-black text-gray-900 mb-1">Quick workflow</div>
+                    <div className="text-gray-600">Search, save history, and get quotes in seconds with a smooth UI.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {activeTab === 'search' && (
+          <div className="space-y-12">
+            {/* Modern Search Interface */}
+            <div className="mb-12">
+              <div className="relative bg-white/90 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-200/50 p-8 hover:shadow-xl transition-all duration-500">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#D72323]/5 via-transparent to-blue-500/5 rounded-3xl"></div>
+                <div className="relative">
+                  <div className="text-center mb-8">
+                    <h2 className="text-4xl font-black text-gray-900 mb-4">
+                      Search <span className="bg-gradient-to-r from-[#D72323] to-red-600 bg-clip-text text-transparent">Insurance Models</span>
+                    </h2>
+                    <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                      Find the perfect insurance coverage for your vehicle. Search by provider, coverage type, or specific features.
+                    </p>
+                  </div>
+                  
+                  <div className="relative max-w-4xl mx-auto">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                        <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchQuery}
+                        onChange={handleSearchInputChange}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSearch(searchQuery)}
+                        className="w-full pl-14 pr-32 py-6 text-lg bg-gray-50/80 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-[#D72323]/20 focus:border-[#D72323] transition-all duration-300 placeholder-gray-500 font-medium"
+                        placeholder="Search for insurance providers, coverage types, or features..."
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-4 gap-2">
+                        {isSearching && (
+                          <div className="w-6 h-6 border-2 border-[#D72323] border-t-transparent rounded-full animate-spin"></div>
+                        )}
+                        <button
+                          onClick={() => handleSearch(searchQuery)}
+                          disabled={isSearching || !searchQuery.trim()}
+                          className="px-6 py-3 bg-gradient-to-r from-[#D72323] to-red-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-[#D72323]/25 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        >
+                          {isSearching ? 'Searching...' : 'Search'}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Search History Dropdown */}
+                    {showSearchHistory && searchHistory.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-200/50 z-50 max-h-80 overflow-y-auto">
+                        <div className="p-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-gray-900">Recent Searches</h3>
+                            <button
+                              onClick={clearSearchHistory}
+                              className="text-sm text-gray-500 hover:text-red-600 font-medium transition-colors duration-200"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {searchHistory.map((item) => (
+                              <button
+                                key={item.id}
+                                onClick={() => selectHistoryItem(item)}
+                                className="w-full text-left p-3 hover:bg-gray-50 rounded-xl transition-all duration-200 group"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <svg className="w-4 h-4 text-gray-400 group-hover:text-[#D72323] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="font-medium text-gray-900 group-hover:text-[#D72323] transition-colors">{item.query}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                                    <span>{item.results} results</span>
+                                    <span>•</span>
+                                    <span>{new Date(item.timestamp).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Quick Search Tags */}
+                  <div className="mt-8 flex flex-wrap justify-center gap-3">
+                    <span className="text-sm font-medium text-gray-600 mr-2">Popular searches:</span>
+                    {['Comprehensive Coverage', 'Premium Protection', 'Basic Insurance', 'Extended Warranty'].map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => handleSearch(tag)}
+                        className="px-4 py-2 bg-gray-100 hover:bg-[#D72323] hover:text-white text-gray-700 rounded-full text-sm font-medium transition-all duration-300 transform hover:scale-105"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Vehicle Upload Section */}
+              <div className="lg:col-span-1">
             <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 p-8 hover:shadow-2xl transition-all duration-300">
               <div className="absolute inset-0 bg-gradient-to-br from-[#D72323]/5 via-transparent to-blue-500/5 rounded-2xl"></div>
               <div className="relative">
@@ -288,6 +588,11 @@ export default function ClientHomepage() {
                         <option value="Audi">Audi</option>
                         <option value="Hyundai">Hyundai</option>
                         <option value="Kia">Kia</option>
+                        <option value="Volkswagen">Volkswagen</option>
+                        <option value="Mazda">Mazda</option>
+                        <option value="Subaru">Subaru</option>
+                        <option value="Lexus">Lexus</option>
+                        <option value="Acura">Acura</option>
                       </select>
                     </div>
 
@@ -377,8 +682,8 @@ export default function ClientHomepage() {
             )}
           </div>
 
-          {/* Insurance Offers Section */}
-          <div className="lg:col-span-2">
+              {/* Insurance Offers Section */}
+              <div className="lg:col-span-2">
             {showOffers ? (
               <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200/50 p-8 hover:shadow-2xl transition-all duration-300">
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-blue-500/5 rounded-2xl"></div>
@@ -396,7 +701,7 @@ export default function ClientHomepage() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {insuranceOffers.map((offer, index) => (
+                    {(filteredInsurance.length > 0 ? filteredInsurance : insuranceOffers).map((offer, index) => (
                       <div key={offer.id} className="group relative bg-white/90 backdrop-blur-sm border-2 border-gray-200/50 rounded-2xl p-6 hover:shadow-xl hover:border-[#D72323]/30 transition-all duration-300 transform hover:scale-[1.02]">
                         <div className="absolute inset-0 bg-gradient-to-br from-[#D72323]/5 via-transparent to-blue-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                         <div className="relative">
@@ -461,24 +766,110 @@ export default function ClientHomepage() {
                 <div className="relative">
                   <div className="w-20 h-20 bg-gradient-to-br from-gray-400 to-gray-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
                     <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-4">No Vehicle Added Yet</h3>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-4">
+                    {searchQuery ? `No results for "${searchQuery}"` : 'Start Your Insurance Search'}
+                  </h3>
                   <p className="text-lg text-gray-600 mb-8 max-w-md mx-auto leading-relaxed">
-                    Add your vehicle information to see personalized insurance offers from multiple providers.
+                    {searchQuery 
+                      ? 'Try searching with different keywords or browse our available insurance options.'
+                      : 'Use the search bar above to find insurance coverage or add your vehicle information to get personalized quotes.'
+                    }
                   </p>
                   <div className="flex items-center justify-center gap-3 text-gray-500">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <span className="font-medium">Upload your vehicle details on the left to get started</span>
+                    <span className="font-medium">
+                      {searchQuery ? 'Try a different search term' : 'Search above or add vehicle details on the left'}
+                    </span>
                   </div>
                 </div>
               </div>
-            )}
+              )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-12">
+            <div className="relative bg-white/90 backdrop-blur-xl rounded-3xl shadow-lg border border-gray-200/50 p-8 hover:shadow-xl transition-all duration-500">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#D72323]/5 via-transparent to-blue-500/5 rounded-3xl"></div>
+              <div className="relative">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-3xl font-black text-gray-900">Search History</h2>
+                    <p className="text-gray-600 mt-1">Your recent insurance searches (click to search again).</p>
+                  </div>
+                  {searchHistory.length > 0 && (
+                    <button
+                      onClick={clearSearchHistory}
+                      className="px-5 py-3 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-700 rounded-xl font-bold transition-all duration-300"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                {searchHistory.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 bg-gradient-to-br from-gray-400 to-gray-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
+                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">No history yet</h3>
+                    <p className="text-gray-600 max-w-md mx-auto">Go to the Search Insurance tab and search something. Your searches will appear here.</p>
+                    <div className="mt-8">
+                      <button
+                        onClick={() => setActiveTab('search')}
+                        className="px-8 py-4 bg-gradient-to-r from-[#D72323] to-red-600 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-[#D72323]/25 transition-all duration-300 transform hover:scale-105"
+                      >
+                        Go to Search
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {searchHistory.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveTab('search');
+                          selectHistoryItem(item);
+                        }}
+                        className="w-full text-left p-5 bg-white/80 hover:bg-white rounded-2xl border border-gray-200/60 hover:border-[#D72323]/30 shadow-sm hover:shadow-md transition-all duration-300"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <div className="text-lg font-bold text-gray-900">{item.query}</div>
+                              <div className="text-sm text-gray-600 mt-1">{new Date(item.timestamp).toLocaleString()}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-sm font-bold">
+                              {item.results} results
+                            </span>
+                            <div className="text-[#D72323] font-bold">Search again</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Logout Confirmation Modal */}
