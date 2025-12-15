@@ -19,7 +19,7 @@ export default function LoginPage() {
     lastName: "",
     dealership: ""
   });
-//fdsafsa
+
   const handleInputChange = (e: any) => {
     setFormData({
       ...formData,
